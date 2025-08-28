@@ -11,7 +11,7 @@ model_registry: dict[str, type[BaseModel]] = {}
 class PydanticSerializer(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, BaseModel):
-            return json.loads(obj.model_dump_json()) | {
+            return json.loads(obj.model_dump_json(by_alias=True)) | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
         elif isinstance(obj, str):
@@ -28,8 +28,12 @@ def pydantic_decoder(obj):
             model_module = importlib.import_module(module_path)
             cls = getattr(model_module, cls_name)
             model_registry[obj["__module_path__"]] = cls
+
         cls = model_registry[obj["__module_path__"]]
-        return cls.model_validate(obj)
+        if getattr(cls, 'model_config', {}).get('extra') == 'forbid':
+            obj.pop('__module_path__')
+
+        return cls.model_validate(obj, by_alias=True)
     return obj
 
 

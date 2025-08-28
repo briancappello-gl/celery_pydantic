@@ -1,6 +1,9 @@
 import pytest
-from pydantic import BaseModel
+
 from celery import Celery
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+
 from celery_pydantic.serializer import (
     PydanticSerializer,
     pydantic_decoder,
@@ -18,6 +21,20 @@ class SimpleModel(BaseModel):
 class NestedModel(BaseModel):
     user: SimpleModel
     active: bool
+
+
+class ForbidExtraModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    age: int
+
+
+class WithAliasGeneratorModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    first_name: str
+    last_name: str
 
 
 def test_pydantic_serializer_simple_model():
@@ -74,6 +91,19 @@ def test_pydantic_decoder():
     assert result.age == 30
 
 
+def test_pydantic_decoder_forbid_extra():
+    data = {
+        "name": "John",
+        "age": 30,
+        "__module_path__": f"{ForbidExtraModel.__module__}.{ForbidExtraModel.__name__}",
+    }
+    result = pydantic_decoder(data)
+
+    assert isinstance(result, ForbidExtraModel)
+    assert result.name == "John"
+    assert result.age == 30
+
+
 def test_pydantic_decoder_non_pydantic():
     data = {"key": "value"}
     result = pydantic_decoder(data)
@@ -88,6 +118,16 @@ def test_pydantic_dumps_loads_roundtrip():
     assert isinstance(deserialized, SimpleModel)
     assert deserialized.name == model.name
     assert deserialized.age == model.age
+
+
+def test_pydantic_dumps_loads_roundtrip_with_alias_generator():
+    model = WithAliasGeneratorModel(firstName="John", lastName="Smith")
+    serialized = pydantic_dumps(model)
+    deserialized = pydantic_loads(serialized)
+
+    assert isinstance(deserialized, WithAliasGeneratorModel)
+    assert deserialized.first_name == model.first_name
+    assert deserialized.last_name == model.last_name
 
 
 def test_pydantic_dumps_loads_nested_roundtrip():
