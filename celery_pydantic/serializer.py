@@ -1,8 +1,12 @@
 import importlib
 import json
-from pydantic import BaseModel
+import uuid
+
+from datetime import date
+
 from celery import Celery
 from kombu.serialization import register
+from pydantic import BaseModel
 
 
 model_registry: dict[str, type[BaseModel]] = {}
@@ -14,10 +18,12 @@ class PydanticSerializer(json.JSONEncoder):
             return json.loads(obj.model_dump_json(by_alias=True)) | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
-        elif isinstance(obj, str):
-            return super().default(obj)
+        elif isinstance(obj, date):
+            return obj.isoformat()
+        elif isinstance(obj, uuid.UUID):
+            return str(obj)
         else:
-            return obj
+            return super().default(obj)
 
 
 def pydantic_decoder(obj):
