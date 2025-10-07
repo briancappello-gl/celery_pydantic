@@ -1,8 +1,7 @@
+import datetime
 import importlib
 import json
 import uuid
-
-from datetime import date
 
 from celery import Celery
 from kombu.serialization import register
@@ -18,8 +17,8 @@ class PydanticSerializer(json.JSONEncoder):
             return json.loads(obj.model_dump_json(by_alias=True)) | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
-        elif isinstance(obj, date):
-            return obj.isoformat()
+        elif isinstance(obj, datetime.date):
+            return {"__isoformat__": obj.__class__.__name__, "value": obj.isoformat()}
         elif isinstance(obj, uuid.UUID):
             return str(obj)
         else:
@@ -27,6 +26,9 @@ class PydanticSerializer(json.JSONEncoder):
 
 
 def pydantic_decoder(obj):
+    if "__isoformat__" in obj:
+        typ = getattr(datetime, obj["__isoformat__"])
+        return typ.fromisoformat(obj["value"])
     if "__module_path__" in obj:
         if obj["__module_path__"] not in model_registry:
             module_path = ".".join(obj["__module_path__"].split(".")[:-1])
