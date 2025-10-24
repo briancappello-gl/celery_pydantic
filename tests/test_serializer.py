@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from datetime import date
+
 import pytest
 
 from celery import Celery
@@ -6,11 +9,24 @@ from pydantic.alias_generators import to_camel
 
 from celery_pydantic.serializer import (
     PydanticSerializer,
+    pydantic_celery,
     pydantic_decoder,
     pydantic_dumps,
     pydantic_loads,
-    pydantic_celery,
 )
+
+
+@dataclass
+class SimpleDataclass:
+    name: str
+    age: int
+    bday: date
+
+
+@dataclass
+class NestedDataclass:
+    user: SimpleDataclass
+    active: bool
 
 
 class SimpleModel(BaseModel):
@@ -51,6 +67,22 @@ def test_pydantic_serializer_simple_model():
     )
 
 
+def test_pydantic_serializer_simple_dataclass():
+    model = SimpleDataclass(name="John", age=30, bday=date(2020, 1, 1))
+    serializer = PydanticSerializer()
+    result = serializer.default(model)
+
+    assert isinstance(result, dict)
+    assert result["name"] == "John"
+    assert result["age"] == 30
+    assert result["bday"] == "2020-01-01"
+    assert "__module_path__" in result
+    assert (
+        result["__module_path__"]
+        == f"{SimpleDataclass.__module__}.{SimpleDataclass.__name__}"
+    )
+
+
 def test_pydantic_serializer_nested_model():
     user = SimpleModel(name="John", age=30)
     model = NestedModel(user=user, active=True)
@@ -68,9 +100,31 @@ def test_pydantic_serializer_nested_model():
     )
 
 
+def test_pydantic_serializer_nested_dataclass():
+    user = SimpleDataclass(name="John", age=30, bday=date(2020, 1, 1))
+    model = NestedDataclass(user=user, active=True)
+    serializer = PydanticSerializer()
+    result = serializer.default(model)
+
+    assert isinstance(result, dict)
+    assert result["active"] is True
+    assert isinstance(result["user"], dict)
+    assert result["user"]["name"] == "John"
+    assert result["user"]["age"] == 30
+    assert result["user"]["bday"] == "2020-01-01"
+    assert "__module_path__" in result
+    assert (
+        result["__module_path__"]
+        == f"{NestedDataclass.__module__}.{NestedDataclass.__name__}"
+    )
+
+
 @pytest.mark.parametrize(
     "obj, expected",
-    [({"key": "value"}, {"key": "value"}), ([{"key": "value"}], [{"key": "value"}])],
+    [
+        ({"key": "value"}, {"key": "value"}),
+        ([{"key": "value"}], [{"key": "value"}]),
+    ],
 )
 def test_pydantic_serializer_non_pydantic(obj, expected):
     serializer = PydanticSerializer()
@@ -118,6 +172,20 @@ def test_pydantic_dumps_loads_roundtrip():
     assert isinstance(deserialized, SimpleModel)
     assert deserialized.name == model.name
     assert deserialized.age == model.age
+
+
+def test_dataclass_dumps_loads_roundtrip():
+    user = SimpleDataclass(name="John", age=30, bday=date(2020, 1, 1))
+    nested = NestedDataclass(user=user, active=True)
+    serialized = pydantic_dumps(nested)
+    deserialized = pydantic_loads(serialized)
+
+    assert isinstance(deserialized, NestedDataclass)
+    assert isinstance(deserialized.user, SimpleDataclass)
+    assert deserialized.active is True
+    assert deserialized.user.name == user.name
+    assert deserialized.user.age == user.age
+    assert deserialized.user.bday == user.bday
 
 
 def test_pydantic_dumps_loads_roundtrip_with_alias_generator():

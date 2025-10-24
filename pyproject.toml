@@ -1,9 +1,9 @@
 [project]
 name = "celery-pydantic"
-version = "1.0.2"
+version = "1.0.3"
 description = "A library for serializing Pydantic models in Celery tasks"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Noel Wilson"}
@@ -14,27 +14,16 @@ dependencies = [
     "kombu>=5.0.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "isort>=5.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
 
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -45,11 +34,28 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--cov=celery_pydantic --cov-report=term-missing"
 
-[tool.ruff]
-line-length = 88
-target-version = "py38"
-select = ["E", "F", "B", "I"]
-ignore = [] 
+[tool.ruff.lint]
+extend-select = ["I"]
+ignore = [
+    "F401",  # unused import
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "F401",  # unused-import
+]
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+lines-after-imports = 2
+extra-standard-library = ["typing_extensions"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
