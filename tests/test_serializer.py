@@ -127,8 +127,7 @@ def test_pydantic_serializer_nested_dataclass():
     ],
 )
 def test_pydantic_serializer_non_pydantic(obj, expected):
-    serializer = PydanticSerializer()
-    result = serializer.default(obj)
+    result = pydantic_loads(pydantic_dumps(obj))
     assert result == expected
 
 

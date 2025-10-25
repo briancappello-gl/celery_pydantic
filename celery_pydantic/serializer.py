@@ -29,7 +29,7 @@ class PydanticSerializer(json.JSONEncoder):
         elif isinstance(obj, uuid.UUID):
             return str(obj)
 
-        return obj
+        return super().default(obj)
 
 
 def pydantic_decoder(obj):
