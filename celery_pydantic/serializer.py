@@ -13,21 +13,42 @@ from pydantic import BaseModel, TypeAdapter
 model_registry: dict[str, type[BaseModel]] = {}
 
 
+def is_ocpp_call_or_call_result(obj) -> bool:
+    if hasattr(obj, "__class__") and not isinstance(obj, type):
+        cls = obj.__class__
+    else:
+        cls = obj
+
+    return (
+        isinstance(cls, type)
+        and cls.__module__ == "gl_ocpp.messages"
+        and cls.__name__ in {"Call", "CallResult"}
+    )
+
+
 class PydanticSerializer(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, BaseModel):
             return json.loads(obj.model_dump_json(by_alias=True)) | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
+
         elif is_dataclass(obj):
             ta = TypeAdapter(obj.__class__)
             return ta.dump_python(obj, mode="json") | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
+
         elif isinstance(obj, datetime.date):
             return {"__isoformat__": obj.__class__.__name__, "value": obj.isoformat()}
+
         elif isinstance(obj, uuid.UUID):
             return str(obj)
+
+        elif is_ocpp_call_or_call_result(obj):
+            return {"ocpp_message": json.loads(obj.to_json()), "action": obj.action} | {
+                "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
+            }
 
         return super().default(obj)
 
@@ -55,6 +76,13 @@ def pydantic_decoder(obj):
         elif is_dataclass(cls):
             ta = TypeAdapter(cls)
             return ta.validate_python(obj)
+
+        elif is_ocpp_call_or_call_result(cls):
+            args = obj["ocpp_message"][1:]
+            if cls.__name__ == "CallResult":
+                args.append(obj["action"])
+
+            return cls(*args)
 
     return obj
 
