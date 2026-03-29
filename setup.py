@@ -1,8 +1,9 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
+
 
 setup(
     name="celery-pydantic",
-    version="0.2.0",
+    version="1.0.3",
     packages=find_packages(),
     install_requires=[
         "celery>=5.0.0",
@@ -19,5 +20,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.10",
 )

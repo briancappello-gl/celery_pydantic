@@ -1,35 +1,89 @@
+import datetime
 import importlib
 import json
-from pydantic import BaseModel
+import uuid
+
+from dataclasses import is_dataclass
+
 from celery import Celery
 from kombu.serialization import register
+from pydantic import BaseModel, TypeAdapter
 
 
 model_registry: dict[str, type[BaseModel]] = {}
 
 
+def is_ocpp_call_or_call_result(obj) -> bool:
+    if hasattr(obj, "__class__") and not isinstance(obj, type):
+        cls = obj.__class__
+    else:
+        cls = obj
+
+    return (
+        isinstance(cls, type)
+        and cls.__module__ == "gl_ocpp.messages"
+        and cls.__name__ in {"Call", "CallResult"}
+    )
+
+
 class PydanticSerializer(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, BaseModel):
-            return json.loads(obj.model_dump_json()) | {
+            return json.loads(obj.model_dump_json(by_alias=True)) | {
                 "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
             }
-        elif isinstance(obj, str):
-            return super().default(obj)
-        else:
-            return obj
+
+        elif is_dataclass(obj):
+            ta = TypeAdapter(obj.__class__)
+            return ta.dump_python(obj, mode="json") | {
+                "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
+            }
+
+        elif isinstance(obj, datetime.date):
+            return {"__isoformat__": obj.__class__.__name__, "value": obj.isoformat()}
+
+        elif isinstance(obj, uuid.UUID):
+            return str(obj)
+
+        elif is_ocpp_call_or_call_result(obj):
+            return {"ocpp_message": json.loads(obj.to_json()), "action": obj.action} | {
+                "__module_path__": f"{obj.__class__.__module__}.{obj.__class__.__name__}"
+            }
+
+        return super().default(obj)
 
 
 def pydantic_decoder(obj):
-    if "__module_path__" in obj:
+    if "__isoformat__" in obj:
+        typ = getattr(datetime, obj["__isoformat__"])
+        return typ.fromisoformat(obj["value"])
+
+    elif "__module_path__" in obj:
         if obj["__module_path__"] not in model_registry:
             module_path = ".".join(obj["__module_path__"].split(".")[:-1])
             cls_name = obj["__module_path__"].split(".")[-1]
             model_module = importlib.import_module(module_path)
             cls = getattr(model_module, cls_name)
             model_registry[obj["__module_path__"]] = cls
+
         cls = model_registry[obj["__module_path__"]]
-        return cls.model_validate(obj)
+        if issubclass(cls, BaseModel):
+            if getattr(cls, "model_config", {}).get("extra") == "forbid":
+                obj.pop("__module_path__")
+
+            return cls.model_validate(obj, by_alias=True)
+
+        elif is_dataclass(cls):
+            ta = TypeAdapter(cls)
+            return ta.validate_python(obj)
+
+        elif is_ocpp_call_or_call_result(cls):
+            args = obj["ocpp_message"][1:]
+            if cls.__name__ == "CallResult":
+                args.append(obj["action"])
+
+            return cls(*args)
+
     return obj
 
 
